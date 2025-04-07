@@ -1,0 +1,7 @@
+install.packages("data.table")
+install.packages("terra")
+install.packages("ggplot2")
+install.packages("sf")
+install.packages("suntools")
+install.packages("remotes")
+remotes::install_github("tylermorganwall/rayshader")

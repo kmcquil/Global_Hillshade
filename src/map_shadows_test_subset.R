@@ -1,0 +1,191 @@
+##############################################################################
+##############################################################################
+# Calculate shadows for a subset of tiles in NA to test the full process
+##############################################################################
+##############################################################################
+
+# Load packages
+library(terra)
+library(suntools)
+library(data.table)
+library(terra)
+library(rayshader)
+library(sf)
+library(ggplot2)
+
+##############################################################################
+# Set arguments 
+# args[1] is a filepath for a csv with list of tilenames 
+##############################################################################
+args = commandArgs(trailingOnly=TRUE)
+files <- fread(args[1])
+##############################################################################
+# Functions
+##############################################################################
+
+convert_wgs_to_utm <- function(lon, lat){
+    # Based on the lat and long, return the best utm epsg-code
+    utm_band <- as.character(floor((lon + 180) / 6) + 1)
+    utm_band <- sprintf("%02s", utm_band)
+    if(lat>0){
+        epsg_code <- paste0('326', utm_band)
+        return(epsg_code)
+    }else{
+        epsg_code <- paste0('327', utm_band)
+        return(epsg_code)
+    }
+}
+
+
+calculate_shadows <- function(
+                            dem,
+                            dem_mat,
+                            lon_mat, 
+                            lat_mat, 
+                            out_filename,
+                            month, 
+                            hour, 
+                            size, 
+                            res_meters){
+
+    # Create a matrix to store the shadow calcs 
+    cache_mask <- matrix(NA, nrow(dem_mat), ncol(dem_mat))
+   
+    # Create the subsets 
+    i_seq <- seq(1, nrow(dem_mat), size)
+    j_seq <- seq(1, ncol(dem_mat), size)
+
+    # Loop through chunks of cells, calculate the solar position, and then ray trace the shadows
+    for(i in i_seq){
+        for(j in j_seq){
+            # Set up chunks
+            i_end = i+size-1
+            if(i_end>nrow(dem_mat)){i_end=nrow(dem_mat)}
+            j_end = j+size-1
+            if(j_end>ncol(dem_mat)){j_end=ncol(dem_mat)}
+            
+            # Check if the subset is empty. If it is, move onto the next chunk
+            elevation <- mean(dem_mat[i:i_end,j:j_end], na.rm=TRUE)
+            if(is.na(elevation)){next}
+
+            # Create shadow mask. Only raytrace shadows in cells = 1, skip cells=0
+            shadow_mask <- matrix(0, nrow=nrow(dem_mat),ncol=ncol(dem_mat))
+            shadow_mask[i:i_end,j:j_end] <- 1
+
+            # Calculate solar position at that location
+            lon_p <- mean(lon_mat[i:i_end,j:j_end], na.rm=TRUE)
+            lat_p <- mean(lat_mat[i:i_end,j:j_end], na.rm=TRUE)
+            solar_pos <- solarpos(matrix(c(lon_p, lat_p), nrow = 1),
+                    as.POSIXct(paste0("2023-", month, "-01 ", hour, ":00:00"), tz = "EST"),
+                    elev = elevation)
+            solar_azimuth = as.numeric(solar_pos[1,1])
+            solar_elevation = as.numeric(solar_pos[1,2])
+
+            # Perform ray tracing at the specified location
+            shadows = ray_shade(
+                dem_mat,
+                sunaltitude = solar_elevation,
+                sunangle = solar_azimuth,
+                maxsearch = NULL,
+                zscale = res_meters,
+                multicore = FALSE,
+                cache_mask = NULL,
+                shadow_cache = shadow_mask,
+                progbar = FALSE,
+                anglebreaks = NULL
+            )
+            
+            cache_mask[i:i_end,j:j_end] <- shadows[i:i_end,j:j_end]           
+        }
+    }
+
+    # Put in the right format
+    shadows = t(apply(cache_mask, 2, rev))
+    shadow_rast <- rast(vals=shadows, crs=crs(dem), extent=ext(dem), resolution=res(dem))
+    writeRaster(shadow_rast, out_filename, overwrite=TRUE)
+
+    return(shadow_rast)
+}
+
+apply_calculate_shadows <- function(tif_filename, month, hour, size, out){
+    # Load the raster
+    dem <- rast(tif_filename)
+
+    # Create matching rasters of lattidue and longitude
+    lon <- init(dem, 'x')
+    lat <- init(dem, 'y')
+
+    # Project the raster to utm to get the resolution in meters
+    utm_crs <- paste0(
+        "EPSG:", 
+        convert_wgs_to_utm(mean(values(lon)), mean(values(lat)))
+        )
+    dem_projected <- project(dem, utm_crs) 
+    res_meters <- res(dem_projected)[1] 
+
+    # Convert dem, lon, and lat to matrices
+    dem_mat <- raster_to_matrix(dem)
+    lon_mat <- raster_to_matrix(lon)
+    lat_mat <- raster_to_matrix(lat)
+
+    # Set the name to write the tif
+    out_filename <- paste0(
+        out,
+        as.character(size), 
+        "_", 
+        month, 
+        "_",
+        hour,
+        "_",
+        basename(tif_filename)
+        )
+
+    # Calcualte the shadows
+    calculate_shadows(
+        dem,
+        dem_mat,
+        lon_mat, 
+        lat_mat, 
+        out_filename,
+        month, 
+        hour, 
+        size, 
+        res_meters)
+
+    return()
+
+    }
+
+
+##############################################################################
+# Map shadows
+##############################################################################
+
+##############################################################################
+# Use four tiles with 2000x2000 chunks and time how long each takes 
+# to calculate all of the time steps
+##############################################################################
+# Set directory to store the results
+dir.create("data/outputs/test_subset_2000")
+# Create a dt of month/hour combos
+months <- seq(1, 12)
+hours <- seq(0, 23)
+dts <- data.table(expand.grid(months, hours))
+colnames(dts) <- c("month", "hour")
+# Set the size of chunks to use for the solar position
+size <- 2000
+# Set the path to write out shadow maps
+out <- "data/outputs/test_subset_2000/shadow_"
+# Select dem tiles
+#files <- c("data/raw/merit_retile/n35w115_elv.tif", "data/raw/merit_retile/n35w110_elv.tif", "data/raw/merit_retile/n40w115_elv.tif", "data/raw/merit_retile/n40w110_elv.tif")
+
+# Calculate shadows and time it
+start_time <- Sys.time()
+for(file in files){
+    for(i in 1:nrow(dts)){
+        apply_calculate_shadows(file, as.character(dts$month[i]), as.character(dts$hour[i]), size, out)
+    }
+}
+end_time <- Sys.time()
+time_taken <- end_time - start_time
+print(time_taken)
