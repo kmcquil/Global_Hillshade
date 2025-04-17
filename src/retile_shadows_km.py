@@ -20,16 +20,6 @@ import numpy as np
 # Open the df with original tile bounds 
 tile_bounds = pd.read_csv("data/outputs/tile_bounds.csv")
 
-# List all of the shadow-mapped files
-#shadow_files = glob.glob("data/outputs/test_subset_2000_parallel/*.tif")
-shadow_files = []
-for file in glob.glob("data/tiles_conus/*.csv"):
-    df = pd.read_csv(file)
-    fps = df['file'].to_list()
-    fps = [os.path.basename(i) for i in fps]
-    fps = ["data/outputs/test_subset_2000_parallel/shadow_2000_7_15_" + i for i in fps]
-    shadow_files = shadow_files + fps
-
 def custom_merge_avg(old_data, new_data, old_nodata, new_nodata, index=None, roff=None, coff=None):
     old_data[:] = np.nanmean( np.array([ old_data, new_data ]), axis=0 )
 
@@ -147,15 +137,10 @@ def mosaic_and_retile(file, outdir, merge_method):
     [src.close() for src in src_files_to_mosaic]
     print("finished")
 
-outdir = "data/outputs/test_subset_2000_parallel_retile_min"
-[mosaic_and_retile(file, outdir, 'min') for file in shadow_files]
-
-outdir = "data/outputs/test_subset_2000_parallel_retile_mean"
-[mosaic_and_retile(file, outdir, custom_merge_avg) for file in shadow_files]
-
-outdir = "data/outputs/test_subset_2000_parallel_retile_max"
+# List all of the shadow-mapped files
+shadow_files = glob.glob("data/outputs/test_subset_2000_parallel_v2/*.tif")
+outdir = "data/outputs/test_subset_2000_parallel_v2_retile_max"
 [mosaic_and_retile(file, outdir, 'max') for file in shadow_files]
-
 
 
 def big_mosaic(file_list, output_path, merge_method):
@@ -181,11 +166,8 @@ def big_mosaic(file_list, output_path, merge_method):
     print("finished")
 
 
-min_files = glob.glob("data/outputs/test_subset_2000_parallel_retile_min/shadow_2000_7_15_*.tif")
-big_mosaic(min_files, "data/outputs/test_subset_2000_parallel_retile_min/all_together.tif", 'min')
+max_files = glob.glob("data/outputs/test_subset_2000_parallel_v2_retile_max/shadow_2000_7_15_*.tif")
+big_mosaic(max_files, "data/outputs/test_subset_2000_parallel_v2_retile_max/all_together_7_15_km.tif", 'max')
 
-max_files = glob.glob("data/outputs/test_subset_2000_parallel_retile_max/shadow_2000_7_15_*.tif")
-big_mosaic(max_files, "data/outputs/test_subset_2000_parallel_retile_max/all_together.tif", 'max')
-
-mean_files = glob.glob("data/outputs/test_subset_2000_parallel_retile_mean/shadow_2000_7_15_*.tif")
-big_mosaic(mean_files, "data/outputs/test_subset_2000_parallel_retile_mean/all_together.tif", custom_merge_avg)
+max_files = glob.glob("data/outputs/test_subset_2000_parallel_v2_retile_max/shadow_2000_7_10_*.tif")
+big_mosaic(max_files, "data/outputs/test_subset_2000_parallel_v2_retile_max/all_together_7_10_km.tif", 'max')

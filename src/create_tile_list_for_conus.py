@@ -4,13 +4,13 @@ import math
 
 # Range for conus
 #25N - 45N 
-#70W - 120W 
+#70W - 125W 
 
 # Create the combinations 
 lats = list(range(25, 50, 5))
 lats = ["n" + str(i).zfill(2) for i in lats]
 
-longs = list(range(70, 125, 5))
+longs = list(range(70, 130, 5))
 longs = ["w" + str(i).zfill(3) for i in longs]
 
 combinations = list(itertools.product(lats, longs))

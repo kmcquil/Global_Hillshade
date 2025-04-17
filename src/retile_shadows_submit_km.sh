@@ -2,12 +2,12 @@
 ###########################################################################
 ## environment & variable setup
 ####### job customization
-#SBATCH --job-name dwnld
+#SBATCH --job-name retile
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=30GB
-#SBATCH --time 3:00:00
+#SBATCH --mem-per-cpu=20GB
+#SBATCH --time 8:00:00
 #SBATCH -p normal_q
 #SBATCH -A swot
 ####### end of job customization
@@ -19,11 +19,11 @@
 ##source activate /home/kmcquil/env/swot_normalq
 
 # Run my script
-##python retile_dem.py
+##python retile_shadows.py
 
 module load containers/apptainer
 apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
     --cleanenv \
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_r_py.sif python3 src/retile_dem.py
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif python3 src/retile_shadows_km.py

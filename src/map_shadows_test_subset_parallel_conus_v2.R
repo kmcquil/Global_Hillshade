@@ -179,16 +179,16 @@ cl <- makeCluster(n_cores)
 registerDoParallel(cl)
 
 # Set directory to store the results
-dir.create("data/outputs/test_subset_2000_parallel")
+dir.create("data/outputs/test_subset_2000_parallel_v2")
 # Create a dt of month/hour combos
 months <- c(7)
-hours <-c(15)
+hours <-c(10, 15)
 dts <- data.table(expand.grid(months, hours))
 colnames(dts) <- c("month", "hour")
 # Set the size of chunks to use for the solar position
 size <- 2000
 # Set the path to write out shadow maps
-out <- "data/outputs/test_subset_2000_parallel/shadow_"
+out <- "data/outputs/test_subset_2000_parallel_v2/shadow_"
 
 # Calculate shadows and time it
 start_time <- Sys.time()

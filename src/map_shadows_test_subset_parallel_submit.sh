@@ -19,4 +19,4 @@ apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
     --cleanenv \
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade.sif Rscript src/map_shadows_test_subset_parallel.R "data/tiles/tiles${SLURM_ARRAY_TASK_ID}.csv" 11
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_r_py.sif Rscript src/map_shadows_test_subset_parallel.R "data/tiles/tiles${SLURM_ARRAY_TASK_ID}.csv" 11

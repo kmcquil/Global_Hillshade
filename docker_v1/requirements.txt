@@ -1,0 +1,9 @@
+numpy
+pandas
+requests
+bs4
+gdal
+rioxarray
+geopandas
+shapely
+rasterio

@@ -18,4 +18,4 @@ apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
     --cleanenv \
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade.sif Rscript src/make_file_list_test_subset.R
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_r_py.sif Rscript src/make_file_list_test_subset.R

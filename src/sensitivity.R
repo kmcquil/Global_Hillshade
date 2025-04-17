@@ -1,6 +1,6 @@
 ##############################################################################
 ##############################################################################
-# Calculate shadows for a subset of tiles in NA to test stuff out
+# Calculate shadows for a subset of tiles and assess the sensitivity
 ##############################################################################
 ##############################################################################
 
@@ -12,8 +12,6 @@ library(terra)
 library(rayshader)
 library(sf)
 library(ggplot2)
-
-home <- "C:/Users/kmcquil/Documents/Global_Hillshade"
 
 ##############################################################################
 # Functions
@@ -32,49 +30,55 @@ convert_wgs_to_utm <- function(lon, lat){
     }
 }
 
-
 calculate_shadows <- function(
                             dem,
-                            dem_mat,
-                            lon_mat, 
-                            lat_mat, 
+                            lon, 
+                            lat, 
                             out_filename,
                             month, 
                             hour, 
                             size, 
-                            res_meters,
+                            res_meters, 
                             lambert){
 
+    # Convert dem, lon, and lat to matrices in the ray shader format
+    # Because rayshader reverses the rows of the dem before calculating the shadows
+    # I also need to reverse the rows of these so that the solar position and elevation
+    # are accurate for the chunk that is being processed
+    fix <- function(r){
+        r_mat <- terra::as.matrix(r, wide=TRUE)
+        r_mat <- r_mat[,ncol(r_mat):1]
+        r <- rast(vals=r_mat, crs=crs(dem), extent=ext(dem), resolution=res(dem))
+        r_mat <- raster_to_matrix(r)
+    }
+    
+    lon_mat <- fix(lon)
+    lat_mat <- fix(lat)
+    dem_mat_f <- fix(dem)
+    dem_mat <- raster_to_matrix(dem)
     # Create a matrix to store the shadow calcs 
-    cache_mask <- matrix(NA, nrow(dem_mat), ncol(dem_mat))
+    cache_mask <- matrix(NA, nrow=nrow(dem_mat), ncol=ncol(dem_mat))
    
     # Create the subsets 
     i_seq <- seq(1, nrow(dem_mat), size)
     j_seq <- seq(1, ncol(dem_mat), size)
-    print(i_seq)
-    print(j_seq)
 
     # Loop through chunks of cells, calculate the solar position, and then ray trace the shadows
     for(i in i_seq){
         for(j in j_seq){
-            # Track progress
-            print(paste0("i=", i))
-            print(paste0("j=", j))
-
             # Set up chunks
             i_end = i+size-1
             if(i_end>nrow(dem_mat)){i_end=nrow(dem_mat)}
             j_end = j+size-1
             if(j_end>ncol(dem_mat)){j_end=ncol(dem_mat)}
             
-            # Check if the subset is empty. If it is, move onto the next chunk
-            elevation <- mean(dem_mat[i:i_end,j:j_end], na.rm=TRUE)
-            if(is.na(elevation)){next}
+            # Calculate mean elevation in the subset for solar position calculation
+            elevation <- mean(dem_mat_f[i:i_end,j:j_end], na.rm=TRUE)
 
             # Create shadow mask. Only raytrace shadows in cells = 1, skip cells=0
             shadow_mask <- matrix(0, nrow=nrow(dem_mat),ncol=ncol(dem_mat))
             shadow_mask[i:i_end,j:j_end] <- 1
-
+            
             # Calculate solar position at that location
             lon_p <- mean(lon_mat[i:i_end,j:j_end], na.rm=TRUE)
             lat_p <- mean(lat_mat[i:i_end,j:j_end], na.rm=TRUE)
@@ -83,9 +87,6 @@ calculate_shadows <- function(
                     elev = elevation)
             solar_azimuth = as.numeric(solar_pos[1,1])
             solar_elevation = as.numeric(solar_pos[1,2])
-            print(solar_azimuth)
-            print(solar_elevation)
-            print(elevation)
 
             # Perform ray tracing at the specified location
             shadows = ray_shade(
@@ -102,7 +103,7 @@ calculate_shadows <- function(
                 anglebreaks = NULL
             )
             
-            cache_mask[i:i_end,j:j_end] <- shadows[i:i_end,j:j_end]           
+            cache_mask[i:i_end,j:j_end] <- shadows[i:i_end,j:j_end]    
         }
     }
 
@@ -113,6 +114,7 @@ calculate_shadows <- function(
 
     return(shadow_rast)
 }
+
 
 apply_calculate_shadows <- function(tif_filename, month, hour, size, lambert, out="data/outputs/shadow_test_lambert_"){
     # Load the raster
@@ -130,16 +132,9 @@ apply_calculate_shadows <- function(tif_filename, month, hour, size, lambert, ou
     dem_projected <- project(dem, utm_crs) 
     res_meters <- res(dem_projected)[1] 
 
-    # Convert dem, lon, and lat to matrices
-    dem_mat <- raster_to_matrix(dem)
-    lon_mat <- raster_to_matrix(lon)
-    lat_mat <- raster_to_matrix(lat)
-
     # Set the name to write the tif
     if(lambert==TRUE){
         out_filename <- paste0(
-            home, 
-            "/",
             out,
             as.character(size), 
             "_", 
@@ -153,8 +148,6 @@ apply_calculate_shadows <- function(tif_filename, month, hour, size, lambert, ou
     if(lambert==FALSE){
         # Set the name to write out shadow map
         out_filename <- paste0(
-            home, 
-            "/",
             out, 
             as.character(size), 
             "_", 
@@ -165,13 +158,13 @@ apply_calculate_shadows <- function(tif_filename, month, hour, size, lambert, ou
             basename(tif_filename)
             )
     }
+    if(file.exists(out_filename)){return()}
 
     # Calcualte the shadows
     calculate_shadows(
         dem,
-        dem_mat,
-        lon_mat, 
-        lat_mat, 
+        lon, 
+        lat, 
         out_filename,
         month, 
         hour, 
@@ -230,107 +223,106 @@ calculate_sensitivity <- function(tif_filename, date_times, sizes){
     return(sp_dt)
 }
 
-##############################################################################
-# Map shadows
-##############################################################################
-
-##############################################################################
-# Test using 3000 x 3000 size subsets 
-##############################################################################
-month <- "07"
-hour <- "15"
-size <- 3000
-
-files <- list.files(paste0(home, "/data/raw/merit_retile"), pattern=".tif", full.names=TRUE)
-
-start_time <- Sys.time()
-
-for(file in files){
-    print(file)
-    apply_calculate_shadows(file, month, hour, size)
-}
-
-end_time <- Sys.time()
-time_taken <- end_time - start_time
-time_taken
-
-##############################################################################
-# Test using 2000 x 2000 size subsets 
-##############################################################################
-
-month <- "07"
-hour <- "15"
-size <- 2000
-
-files <- list.files(paste0(home, "/data/raw/merit_retile"), pattern=".tif", full.names=TRUE)
-files_subset <- files[c(c(3,4), c(9,10))]
-
-start_time <- Sys.time()
-for(file in files_subset){
-    print(file)
-    apply_calculate_shadows(file, month, hour, size)
-}
-end_time <- Sys.time()
-time_taken <- end_time - start_time
-time_taken
 
 
-##############################################################################
-# Test with lambert = FALSE to get binary of shade or no shade
-##############################################################################
+calculate_sp_corner_diffs <- function(tif_filename, date_times, sizes){
+    # Load the DEM
+    dem <- rast(tif_filename)
+    
+    # Create lat/long rasters and stack
+    lon <- init(dem, 'x')
+    lat <- init(dem, 'y')
+    s <- c(lon, lat, dem)
 
-month <- "07"
-hour <- "15"
-sizes <-c(2000, 3000)
-
-files <- list.files(paste0(home, "/data/raw/merit_retile"), pattern=".tif", full.names=TRUE)
-files_subset <- files[c(c(3,4), c(9,10))]
-
-for(size in sizes){
-    for(file in files_subset){
-        apply_calculate_shadows(file, month, hour, size, lambert=FALSE)
+    # Calcualte sp in four corners of the subset for each subset size and datetime
+    sp_dt = list()
+    i = 0
+    for(num_pixels in sizes){
+        for(d in date_times){
+            i = i + 1
+            c = round(num_pixels/2)
+            solar_position_c = calculate_sp(s[[1:3]][c,c], d[1], d[2])
+            solar_position_ul = calculate_sp(s[[1:3]][1,1], d[1], d[2])
+            solar_position_ll = calculate_sp(s[[1:3]][num_pixels,1], d[1], d[2])
+            solar_position_ur = calculate_sp(s[[1:3]][1,num_pixels], d[1], d[2])
+            solar_position_lr = calculate_sp(s[[1:3]][num_pixels, num_pixels], d[1], d[2])
+            dt = rbind(solar_position_ul, solar_position_ll, solar_position_ur, solar_position_lr)
+            dt$az_diff <- NA
+            for(w in 1:nrow(dt)){
+                d1 <- abs(dt$solar_azimuth[w] - solar_position_c$solar_azimuth[1])
+                d2 <- 360-d1
+                dt$az_diff[w] <- min(d1, d2)
+            }
+            solar_position_c$max_solar_azimuth_difference <- max(dt$az_diff)
+            solar_position_c$max_solar_elevation_difference <- max(abs(dt$solar_elevation - solar_position_c$solar_elevation))
+            solar_position_c$size = num_pixels
+            solar_position_c <- solar_position_c[,!c("solar_azimuth", "solar_elevation")]
+            sp_dt[[i]] = solar_position_c
+        }
     }
+    sp_dt = rbindlist(sp_dt)
+    sp_dt$filename <- tif_filename
+    return(sp_dt)
+}
+
+
+calculate_sp_adj_chunks <- function(tif_filename, date_times, sizes){
+    # Load the DEM
+    dem <- rast(tif_filename)
+    
+    # Create lat/long rasters and stack
+    lon <- init(dem, 'x')
+    lat <- init(dem, 'y')
+    s <- c(lon, lat, dem)
+
+    # Calcualte sp in four corners of the subset for each subset size and datetime
+    sp_dt = list()
+    i = 0
+    for(num_pixels in sizes){
+        for(d in date_times){
+            i = i + 1
+            c = round(num_pixels/2)
+            solar_position_c = calculate_sp(s[[1:3]][c,c], d[1], d[2]) # solar position in center of top left chunk
+            solar_position_below = calculate_sp(s[[1:3]][c+num_pixels,c], d[1], d[2]) # solar position in center of chunk below
+            solar_position_nextto = calculate_sp(s[[1:3]][c,c+num_pixels], d[1], d[2]) # sp in center of chunk next to 
+            solar_position_kitty = calculate_sp(s[[1:3]][c+num_pixels,c+num_pixels], d[1], d[2]) # sp in center of chunk kittydown      
+            dt = rbind(solar_position_below, solar_position_nextto, solar_position_kitty)
+            dt$az_diff <- NA
+            for(w in 1:nrow(dt)){
+                d1 <- abs(dt$solar_azimuth[w] - solar_position_c$solar_azimuth[1])
+                d2 <- 360-d1
+                dt$az_diff[w] <- min(d1, d2)
+            }
+            solar_position_c$max_solar_azimuth_difference <- max(dt$az_diff)
+            solar_position_c$max_solar_elevation_difference <- max(abs(dt$solar_elevation - solar_position_c$solar_elevation))
+            solar_position_c$size = num_pixels
+            solar_position_c <- solar_position_c[,!c("solar_azimuth", "solar_elevation")]
+            sp_dt[[i]] = solar_position_c
+        }
+    }
+    sp_dt = rbindlist(sp_dt)
+    sp_dt$filename <- tif_filename
+    return(sp_dt)
 }
 
 
 ##############################################################################
-# Test at different latitudes and different times of day 
 ##############################################################################
-
-# Two possible size chunks
-sizes <-c(2000, 3000)
-
-# three files that are in EST and span a latitude gradient
-files_subset <- c(
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n00w075_elv.tif",
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n35w085_elv.tif", 
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n60w075_elv.tif"
-    )
-
-for(size in sizes){
-    for(file in files_subset){
-        apply_calculate_shadows(file, "07", "08", size, lambert=TRUE) # 8 am 
-        apply_calculate_shadows(file, "07", "13", size, lambert=TRUE) # 1 pm 
-        apply_calculate_shadows(file, "07", "18", size, lambert=TRUE) # 6 pm
-    }
-} 
-
-
-
-
-
-
+# Assess the sensistivity of solar position and shadow intensity based on the 
+# solar position subset size, latitude, and time of day. 
+# The solar position subset size to test include 1000x1000 pixels, 2000x2000 pixels, 
+# and 3000x3000 pixels 
+# Latitudes to test include 0, 30, 60
+# Time of day to test include 9am, 12pm, 3pm, 6pm 
+#
+# Choose three tifs in the EST time zone at latitudes = 0, 30, 60. 
+#
+# Calculate the solar position in the four corners of the solar position subset 
+# and then calculate the difference in solar position across the four corners.
+# 
+# Calculate shadows for the tifs with diff solar position subset sizes and 
+# then calculate the difference in shadow intensity based on ssubset size.
 ##############################################################################
-# This is the big sensitivity test that actually matters
-# Choose three tiles in the EST time zone at latitudes = 0, 30, 60
-# Calculate shadows in those tiles with subset sizes of 1000, 2000, 3000
-# at times 9am, 12pm, 3pm, 6pm
-# Also, for the subset in the top left corner, calculate the solar position 
-# in each corner and save it for that latitude, time, and subset sie
-# After we have calcualted all of this, perform a pixel size 
-# sensitivity analysis of the shadows and the solar position
-# For example, how different is the solar position in degrees based on those factors
-# For example, what is the average difference in shadow intensity based on those factors 
 ##############################################################################
 
 ##############################################################################
@@ -340,13 +332,14 @@ for(size in sizes){
 date_times <- list(c("07", "09"), c("07", "12"), c("07", "15"), c("07", "18"))
 sizes <- c(1000, 2000, 3000)
 files <- c(
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n00w075_elv.tif",
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n35w085_elv.tif", 
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n60w075_elv.tif"
+    "data/raw/sensitivity_examples/n00w075_elv.tif",
+    "data/raw/sensitivity_examples/n35w085_elv.tif", 
+    "data/raw/sensitivity_examples/n60w075_elv.tif"
     )
 out <- "data/outputs/sensitivity_test/shadow_"
 
 sensitivity_df <- rbindlist(lapply(files, calculate_sensitivity, date_times=date_times, sizes=sizes))
+sensitivity_df$datetime <- as.character(sensitivity_df$datetime)
 fwrite(sensitivity_df, paste0(out, "sensitivity.csv"))
 
 for(date_time in date_times){
@@ -358,10 +351,11 @@ for(date_time in date_times){
 }
 
 ##############################################################################
-# Assess sensitivity of sp
+# Assess sensitivity of solar position
 ##############################################################################
 
 # Calculate the difference in solar azimuth and solar elevation by latitude, size, and hour of day
+sensitivity_df <- fread(paste0(out, "sensitivity.csv"))
 sensitivity_df$hour <- as.numeric(format(as.POSIXct(sensitivity_df$datetime), format = "%H"))
 sensitivity_df$Latitude <- as.numeric(substr(basename(sensitivity_df$filename), 2, 3))
 
@@ -391,6 +385,7 @@ ggplot(sensitivity) +
     ylab("Max difference in solar azimuth between four corners (degrees)") + 
     theme_bw() + 
     facet_wrap(~hour)
+ggsave("data/outputs/sensitivity_test/four_corner_solar_azimuth_plot.png", width = 20, height = 20, units = "cm")
 
 ggplot(sensitivity) + 
     geom_point(aes(x=size, y=diff_solar_elevation, color=Latitude), size=5) +
@@ -398,10 +393,10 @@ ggplot(sensitivity) +
     ylab("Max difference in solar elevation between four corners (degrees)") + 
     theme_bw() + 
     facet_wrap(~hour)
-
+ggsave("data/outputs/sensitivity_test/four_corner_solar_elevation_plot.png", width = 20, height = 20, units = "cm")
 
 ##############################################################################
-# Assess sensitivity of shadows
+# Assess sensitivity of shadow intensity
 ##############################################################################
 
 # I have a tif for each latitude, hour, and subset
@@ -462,6 +457,7 @@ ggplot(quantile_dt_long[label=="1000-2000"]) +
     ylab("Difference in shade intensity") + 
     facet_wrap(~latitude) + 
     ggtitle("1000-2000")
+ggsave("data/outputs/sensitivity_test/shade_intensity_diff_1000_2000_plot.png", width = 20, height = 10, units = "cm")
 
 ggplot(quantile_dt_long[label=="1000-3000"]) + 
     geom_point(aes(x=quantile, y=value, color=hour), size=3) + 
@@ -470,6 +466,7 @@ ggplot(quantile_dt_long[label=="1000-3000"]) +
     ylab("Difference in shade intensity") + 
     facet_wrap(~latitude) + 
     ggtitle("1000-3000")
+ggsave("data/outputs/sensitivity_test/shade_intensity_diff_1000_3000_plot.png", width = 20, height = 10, units = "cm")
 
 ggplot(quantile_dt_long[label=="2000-3000"]) + 
     geom_point(aes(x=quantile, y=value, color=hour), size=3) + 
@@ -478,66 +475,31 @@ ggplot(quantile_dt_long[label=="2000-3000"]) +
     ylab("Difference in shade intensity") + 
     facet_wrap(~latitude) + 
     ggtitle("2000-3000")
-
-
-
+ggsave("data/outputs/sensitivity_test/shade_intensity_diff_2000_3000_plot.png", width = 20, height = 10, units = "cm")
 
 
 
 ##############################################################################
-# now try two new things 
-# 1. Quantify the difference in solar position from the center of a chunk 
-# where it is the most accurate with the four corners
-# 2. In the bottom left corner, calculate how different that assigned solar position 
-# is from the cells 
+##############################################################################
+# Two additional metrics to assess sensitivity
+# 1. Quantify the difference in solar position from the center of a subset 
+# where it is the most accurate to the four corners
+# 2. Quantify the difference in solar position calculated at the center of 
+# one subset compared to the adjacent subsets (right, down, diagnoal). Since the 
+# center is used for the whole subset, this is looking at the forced diference 
+# along the sams of tiles. 
+##############################################################################
 ##############################################################################
 
-calculate_sp_corner_diffs <- function(tif_filename, date_times, sizes){
-    # Load the DEM
-    dem <- rast(tif_filename)
-    
-    # Create lat/long rasters and stack
-    lon <- init(dem, 'x')
-    lat <- init(dem, 'y')
-    s <- c(lon, lat, dem)
-
-    # Calcualte sp in four corners of the subset for each subset size and datetime
-    sp_dt = list()
-    i = 0
-    for(num_pixels in sizes){
-        for(d in date_times){
-            i = i + 1
-            c = round(num_pixels/2)
-            solar_position_c = calculate_sp(s[[1:3]][c,c], d[1], d[2])
-            solar_position_ul = calculate_sp(s[[1:3]][1,1], d[1], d[2])
-            solar_position_ll = calculate_sp(s[[1:3]][num_pixels,1], d[1], d[2])
-            solar_position_ur = calculate_sp(s[[1:3]][1,num_pixels], d[1], d[2])
-            solar_position_lr = calculate_sp(s[[1:3]][num_pixels, num_pixels], d[1], d[2])
-            dt = rbind(solar_position_ul, solar_position_ll, solar_position_ur, solar_position_lr)
-            dt$az_diff <- NA
-            for(w in 1:nrow(dt)){
-                d1 <- abs(dt$solar_azimuth[w] - solar_position_c$solar_azimuth[1])
-                d2 <- 360-d1
-                dt$az_diff[w] <- min(d1, d2)
-            }
-            solar_position_c$max_solar_azimuth_difference <- max(dt$az_diff)
-            solar_position_c$max_solar_elevation_difference <- max(abs(dt$solar_elevation - solar_position_c$solar_elevation))
-            solar_position_c$size = num_pixels
-            solar_position_c <- solar_position_c[,!c("solar_azimuth", "solar_elevation")]
-            sp_dt[[i]] = solar_position_c
-        }
-    }
-    sp_dt = rbindlist(sp_dt)
-    sp_dt$filename <- tif_filename
-    return(sp_dt)
-}
-
+##############################################################################
+# 1. Center to four corner difference
+##############################################################################
 date_times <- list(c("07", "09"), c("07", "12"), c("07", "15"), c("07", "18"))
 sizes <- c(1000, 2000, 3000)
 files <- c(
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n00w075_elv.tif",
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n35w085_elv.tif", 
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n60w075_elv.tif"
+    "data/raw/sensitivity_examples/n00w075_elv.tif",
+    "data/raw/sensitivity_examples/n35w085_elv.tif", 
+    "data/raw/sensitivity_examples/n60w075_elv.tif"
     )
 out <- "data/outputs/sensitivity_test"
 
@@ -545,6 +507,8 @@ sp4c_df <- rbindlist(lapply(files, calculate_sp_corner_diffs, date_times=date_ti
 sp4c_df$hour <- as.numeric(format(as.POSIXct(sp4c_df$datetime), format = "%H"))
 sp4c_df$Latitude <- as.numeric(substr(basename(sp4c_df$filename), 2, 3))
 fwrite(sp4c_df, paste0(out, "/sp4c_df.csv"))
+
+sp4c_df <- fread(paste0(out, "/sp4c_df.csv"))
 
 # Plot max difference between the four corners according to the size 
 sp4c_df$Latitude <- as.factor(sp4c_df$Latitude)
@@ -554,6 +518,7 @@ ggplot(sp4c_df) +
     ylab("Max difference in solar azimuth between center and four corners") + 
     theme_bw() + 
     facet_wrap(~hour)
+ggsave("data/outputs/sensitivity_test/center_comp_four_corners_solar_azimuth_plot.png", width = 20, height = 20, units = "cm")
 
 ggplot(sp4c_df) + 
     geom_point(aes(x=size, y=max_solar_elevation_difference, color=Latitude), size=5) +
@@ -561,59 +526,11 @@ ggplot(sp4c_df) +
     ylab("Max difference in solar elevation between center and four corners") + 
     theme_bw() + 
     facet_wrap(~hour)
-
+ggsave("data/outputs/sensitivity_test/center_comp_four_corners_solar_elevation_plot.png", width = 20, height = 20, units = "cm")
 
 ##############################################################################
-# Do the second thing
+# 2. Diff in solar position between adjacent subsets
 ##############################################################################
-
-calculate_sp_adj_chunks <- function(tif_filename, date_times, sizes){
-    # Load the DEM
-    dem <- rast(tif_filename)
-    
-    # Create lat/long rasters and stack
-    lon <- init(dem, 'x')
-    lat <- init(dem, 'y')
-    s <- c(lon, lat, dem)
-
-    # Calcualte sp in four corners of the subset for each subset size and datetime
-    sp_dt = list()
-    i = 0
-    for(num_pixels in sizes){
-        for(d in date_times){
-            i = i + 1
-            c = round(num_pixels/2)
-            solar_position_c = calculate_sp(s[[1:3]][c,c], d[1], d[2]) # solar position in center of top left chunk
-            solar_position_below = calculate_sp(s[[1:3]][c+num_pixels,c], d[1], d[2]) # solar position in center of chunk below
-            solar_position_nextto = calculate_sp(s[[1:3]][c,c+num_pixels], d[1], d[2]) # sp in center of chunk next to 
-            solar_position_kitty = calculate_sp(s[[1:3]][c+num_pixels,c+num_pixels], d[1], d[2]) # sp in center of chunk kittydown      
-            dt = rbind(solar_position_below, solar_position_nextto, solar_position_kitty)
-            dt$az_diff <- NA
-            for(w in 1:nrow(dt)){
-                d1 <- abs(dt$solar_azimuth[w] - solar_position_c$solar_azimuth[1])
-                d2 <- 360-d1
-                dt$az_diff[w] <- min(d1, d2)
-            }
-            solar_position_c$max_solar_azimuth_difference <- max(dt$az_diff)
-            solar_position_c$max_solar_elevation_difference <- max(abs(dt$solar_elevation - solar_position_c$solar_elevation))
-            solar_position_c$size = num_pixels
-            solar_position_c <- solar_position_c[,!c("solar_azimuth", "solar_elevation")]
-            sp_dt[[i]] = solar_position_c
-        }
-    }
-    sp_dt = rbindlist(sp_dt)
-    sp_dt$filename <- tif_filename
-    return(sp_dt)
-}
-
-date_times <- list(c("07", "09"), c("07", "12"), c("07", "15"), c("07", "18"))
-sizes <- c(1000, 2000, 3000)
-files <- c(
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n00w075_elv.tif",
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n35w085_elv.tif", 
-    "C:/Users/kmcquil/Documents/Global_Hillshade/data/raw/merit/n60w075_elv.tif"
-    )
-out <- "data/outputs/sensitivity_test"
 
 sp_adj_df <- rbindlist(lapply(files, calculate_sp_adj_chunks, date_times=date_times, sizes=sizes))
 sp_adj_df$hour <- as.numeric(format(as.POSIXct(sp_adj_df$datetime), format = "%H"))
@@ -621,6 +538,7 @@ sp_adj_df$Latitude <- as.numeric(substr(basename(sp_adj_df$filename), 2, 3))
 fwrite(sp_adj_df, paste0(out, "/sp_adj_df.csv"))
 
 # Plot max difference between the four corners according to the size 
+sp_adj_df <- fread(paste0(out, "/sp_adj_df.csv"))
 sp_adj_df$Latitude <- as.factor(sp_adj_df$Latitude)
 ggplot(sp_adj_df) + 
     geom_point(aes(x=size, y=max_solar_azimuth_difference, color=Latitude), size=5) +
@@ -628,6 +546,7 @@ ggplot(sp_adj_df) +
     ylab("Max difference in solar azimuth from other three chunks") + 
     theme_bw() + 
     facet_wrap(~hour)
+ggsave("data/outputs/sensitivity_test/adj_subsets_solar_azimuth_plot.png", width = 20, height = 20, units = "cm")
 
 ggplot(sp_adj_df) + 
     geom_point(aes(x=size, y=max_solar_elevation_difference, color=Latitude), size=5) +
@@ -635,3 +554,4 @@ ggplot(sp_adj_df) +
     ylab("Max difference in solar elevation from other three chunks") + 
     theme_bw() + 
     facet_wrap(~hour)
+ggsave("data/outputs/sensitivity_test/adj_subsets_solar_elevation_plot.png", width = 20, height = 20, units = "cm")

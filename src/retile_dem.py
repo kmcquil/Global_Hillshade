@@ -24,10 +24,6 @@ import os
 import rasterio
 from rasterio.mask import mask
 
-
-#home = r"C:\Users\kmcquil\Documents\Global_Hillshade"
-home = "/projects/swot/kmcquil/Global_Hillshade"
-
 ##############################################################################
 # Functions
 ##############################################################################
@@ -109,6 +105,15 @@ def calculate_new_tile_bounds(tile):
     geo_df = gpd.GeoDataFrame({'geometry': [bbox]}, crs=geo_df.crs)
     geo_df = geo_df.to_crs(4326)
     xmin, ymin, xmax, ymax = geo_df.total_bounds
+    
+    # Deal with edge cases where the tile is trying to wrap around the world 
+    # bc it goes past -180 or 180 to the other side
+    if xmax_og > 175: 
+        xmin = xmax.copy() 
+        xmax = 180
+    if xmax_og < -175: 
+        xmax = xmin.copy() 
+        xmin = -180
 
     # Save these to a df 
     df = pd.DataFrame({
@@ -169,17 +174,17 @@ def clip_vrt_to_coords(vrt_path, output_path, min_x, min_y, max_x, max_y):
 # Unzip each .tar file
 ##############################################################################
 # Set the path to extract files
-extraction_path = home + "/data/raw/merit"
+extraction_path = "data/raw/merit"
 # List the tar files
-input_files = glob.glob(home + "/data/raw/merit/*.tar")
+input_files = glob.glob("data/raw/merit/*.tar")
 # Extract
 [extract_tar(file, extraction_path) for file in input_files]
 
 ##############################################################################
 # Create a virtual raster of all of the tiles
 ##############################################################################
-input_files = glob.glob(home + "/data/raw/merit/*.tif", recursive=True)
-output_vrt = home + "/data/raw/merit_retile/elv.vrt"
+input_files = glob.glob("data/raw/merit/*.tif", recursive=True)
+output_vrt = "data/raw/merit_retile/elv.vrt"
 vrt = gdal.BuildVRT(output_vrt, input_files)
 del vrt
 
@@ -187,14 +192,14 @@ del vrt
 # Calculate new tile bounds based on the potential maximum shadow length
 ##############################################################################
 tile_bounds = pd.concat([calculate_new_tile_bounds(tile) for tile in input_files])
-tile_bounds.to_csv(home + "/data/outputs/tile_bounds.csv")
+tile_bounds.to_csv("data/outputs/tile_bounds.csv")
 
 ##############################################################################
 # Create new tiles from the VRT
 ##############################################################################
-vrt_file =home + "/data/raw/merit_retile/elv.vrt"
+vrt_file = "data/raw/merit_retile/elv.vrt"
 for i in range(0, tile_bounds.shape[0]):
-    output_file = home + "/data/raw/merit_retile/" + tile_bounds['tile'].iloc[i]
+    output_file = "data/raw/merit_retile/" + tile_bounds['tile'].iloc[i]
     min_x_coord = tile_bounds['xmin_rt'].iloc[i]
     min_y_coord = tile_bounds['ymin_rt'].iloc[i]
     max_x_coord = tile_bounds['xmax_rt'].iloc[i]
@@ -204,37 +209,36 @@ for i in range(0, tile_bounds.shape[0]):
 ##############################################################################
 # Delete the un-tarred tif files 
 ##############################################################################
-input_files = glob.glob(home + "/data/raw/merit/*.tif")
+input_files = glob.glob("data/raw/merit/*.tif")
 [os.remove(file) for file in input_files]
 
 ##############################################################################
 # For visualization purposes, make a geopandas df of the original and 
 # retiled tiles 
 ##############################################################################
-#from matplotlib import pyplot as plt
-#tile_gdf = []
-#for i in range(0, tile_bounds.shape[0]):
-#    bbox = box(tile_bounds['xmin_og'].iloc[i], 
-#               tile_bounds['ymin_og'].iloc[i], 
-#               tile_bounds['xmax_og'].iloc[i],
-#               tile_bounds['ymax_og'].iloc[i])
-#    gdf = gpd.GeoDataFrame({
-#        'geometry':[bbox],
-#        'version':['Original'],
-#        'tile':[tile_bounds['tile'].iloc[i]]
-#        }, crs=4326)
-#    tile_gdf.append(gdf)
-#
-#    bbox = box(tile_bounds['xmin_rt'].iloc[i], 
-#               tile_bounds['ymin_rt'].iloc[i], 
-#               tile_bounds['xmax_rt'].iloc[i],
-#               tile_bounds['ymax_rt'].iloc[i])
-#    gdf = gpd.GeoDataFrame({
-#        'geometry':[bbox],
-#        'version':['Retiled'],
-#        'tile':[tile_bounds['tile'].iloc[i]]
-#        }, crs=4326)
-#    tile_gdf.append(gdf)
-#tile_gdf =pd.concat(tile_gdf)
-#tile_gdf.to_file(home + "/data/outputs/tile_bounds.shp")
+tile_gdf = []
+for i in range(0, tile_bounds.shape[0]):
+    bbox = box(tile_bounds['xmin_og'].iloc[i], 
+               tile_bounds['ymin_og'].iloc[i], 
+               tile_bounds['xmax_og'].iloc[i],
+               tile_bounds['ymax_og'].iloc[i])
+    gdf = gpd.GeoDataFrame({
+        'geometry':[bbox],
+        'version':['Original'],
+        'tile':[tile_bounds['tile'].iloc[i]]
+        }, crs=4326)
+    tile_gdf.append(gdf)
+
+    bbox = box(tile_bounds['xmin_rt'].iloc[i], 
+               tile_bounds['ymin_rt'].iloc[i], 
+               tile_bounds['xmax_rt'].iloc[i],
+               tile_bounds['ymax_rt'].iloc[i])
+    gdf = gpd.GeoDataFrame({
+        'geometry':[bbox],
+        'version':['Retiled'],
+        'tile':[tile_bounds['tile'].iloc[i]]
+        }, crs=4326)
+    tile_gdf.append(gdf)
+tile_gdf =pd.concat(tile_gdf)
+tile_gdf.to_file("data/outputs/tile_bounds.shp")
 
