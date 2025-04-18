@@ -1,5 +1,8 @@
 # Notes from getting this thing to build
 
+- The rayshade_r_py.sif was built from a Dockerfile using the original Rayshade package (devtools::install_github("tylermorganwall/rayshader")).
+- The rayshade_km.sif was built from the Dockerfile in this folder and uses my updated version of the Rayshade package.
+
 ### Create a dockerfile 
 - An Ubuntu R image is used as the base for the image. 
 - Necessary R libraries are installed from requirements.R.
