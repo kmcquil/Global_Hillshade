@@ -2,15 +2,15 @@
 ###########################################################################
 ## environment & variable setup
 ####### job customization
-#SBATCH --job-name retile
+#SBATCH --job-name shadows
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=20GB
-#SBATCH --time 3:00:00
+#SBATCH --cpus-per-task=6
+#SBATCH --mem-per-cpu=12GB
+#SBATCH --time 10:00:00
 #SBATCH -p normal_q
 #SBATCH -A swot
-#SBATCH --array=1-30
+#SBATCH --array=1-100
 ####### end of job customization
 # end of environment & variable setup
 
@@ -19,4 +19,4 @@ apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
     --cleanenv \
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif python3 src/retile_shadows.py "data/shadow_tiles/tiles${SLURM_ARRAY_TASK_ID}.csv"
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif Rscript src/map_shadows.R "data/dem_tiles/tiles${SLURM_ARRAY_TASK_ID}.csv" 6 "data/outputs/shadows"

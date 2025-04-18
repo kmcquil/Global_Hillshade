@@ -13,17 +13,9 @@
 ####### end of job customization
 # end of environment & variable setup
 
-#module load site/tinkercliffs-rome/easybuild/setup
-#module load site/tinkercliffs/easybuild/setup
-#module load Miniconda3/23.10.0-1
-#source activate /home/kmcquil/env/swot_normalq
-
-# Run my script
-#python download_data.py
-
 module load containers/apptainer
 apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
     --cleanenv \
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_r_py.sif python3 src/retile_shadows.py
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif python3 src/download_data.py

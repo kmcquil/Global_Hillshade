@@ -6,12 +6,19 @@
 # Load modules
 ##############################################################################
 import glob
-#from osgeo import gdal
 import pandas as pd
 import os
 import rasterio
 from rasterio.merge import merge
 import numpy as np
+import sys
+
+##############################################################################
+# Set the inputs
+##############################################################################
+shadow_files = pd.DataFrame(str(sys.argv[1]))
+shadow_files = shadow_files["file"].to_list()
+outdir = "data/outputs/shadows_retile"
 
 ##############################################################################
 # Retile 
@@ -20,20 +27,7 @@ import numpy as np
 # Open the df with original tile bounds 
 tile_bounds = pd.read_csv("data/outputs/tile_bounds.csv")
 
-# List all of the shadow-mapped files
-#shadow_files = glob.glob("data/outputs/test_subset_2000_parallel/*.tif")
-shadow_files = []
-for file in glob.glob("data/tiles_conus/*.csv"):
-    df = pd.read_csv(file)
-    fps = df['file'].to_list()
-    fps = [os.path.basename(i) for i in fps]
-    fps = ["data/outputs/test_subset_2000_parallel/shadow_2000_7_15_" + i for i in fps]
-    shadow_files = shadow_files + fps
-
-def custom_merge_avg(old_data, new_data, old_nodata, new_nodata, index=None, roff=None, coff=None):
-    old_data[:] = np.nanmean( np.array([ old_data, new_data ]), axis=0 )
-
-def mosaic_and_retile(file, outdir, merge_method):
+def mosaic_and_retile(file, outdir):
     # Check if the file exists, if not return 
     if not os.path.exists(file):
         print("doesn't exist")
@@ -126,7 +120,7 @@ def mosaic_and_retile(file, outdir, merge_method):
 
     # Mosaic the files together, using the bounds of the original tile 
     src_files_to_mosaic = [rasterio.open(s) for s in adj_files]
-    mosaic, out_trans = merge(src_files_to_mosaic, bounds=bbox, method=merge_method, nodata=float('nan')) 
+    mosaic, out_trans = merge(src_files_to_mosaic, bounds=bbox, method="max", nodata=float('nan')) 
     
     # Update the metadata with new dimensions, transform, and CRS
     out_meta = src_files_to_mosaic[0].meta.copy()
@@ -147,45 +141,4 @@ def mosaic_and_retile(file, outdir, merge_method):
     [src.close() for src in src_files_to_mosaic]
     print("finished")
 
-outdir = "data/outputs/test_subset_2000_parallel_retile_min"
-[mosaic_and_retile(file, outdir, 'min') for file in shadow_files]
-
-outdir = "data/outputs/test_subset_2000_parallel_retile_mean"
-[mosaic_and_retile(file, outdir, custom_merge_avg) for file in shadow_files]
-
-outdir = "data/outputs/test_subset_2000_parallel_retile_max"
-[mosaic_and_retile(file, outdir, 'max') for file in shadow_files]
-
-
-
-def big_mosaic(file_list, output_path, merge_method):
-    src_files_to_mosaic = [rasterio.open(s) for s in file_list]
-    mosaic, out_trans = merge(src_files_to_mosaic, method=merge_method) 
-    
-    # Update the metadata with new dimensions, transform, and CRS
-    out_meta = src_files_to_mosaic[0].meta.copy()
-    out_meta.update({
-        "driver": "GTiff",
-        "height": mosaic.shape[1],
-        "width": mosaic.shape[2],
-        "transform": out_trans,
-        "crs": src_files_to_mosaic[0].crs
-    })
-
-    # Write the mosaic raster to a new file
-    with rasterio.open(output_path, "w", **out_meta) as dest:
-        dest.write(mosaic)
-
-    # Close the opened raster datasets
-    [src.close() for src in src_files_to_mosaic]
-    print("finished")
-
-
-min_files = glob.glob("data/outputs/test_subset_2000_parallel_retile_min/shadow_2000_7_15_*.tif")
-big_mosaic(min_files, "data/outputs/test_subset_2000_parallel_retile_min/all_together.tif", 'min')
-
-max_files = glob.glob("data/outputs/test_subset_2000_parallel_retile_max/shadow_2000_7_15_*.tif")
-big_mosaic(max_files, "data/outputs/test_subset_2000_parallel_retile_max/all_together.tif", 'max')
-
-mean_files = glob.glob("data/outputs/test_subset_2000_parallel_retile_mean/shadow_2000_7_15_*.tif")
-big_mosaic(mean_files, "data/outputs/test_subset_2000_parallel_retile_mean/all_together.tif", custom_merge_avg)
+[mosaic_and_retile(file, outdir) for file in shadow_files]
