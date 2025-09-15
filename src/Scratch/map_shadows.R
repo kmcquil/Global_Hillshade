@@ -21,6 +21,7 @@ args = commandArgs(trailingOnly=TRUE)
 files <- fread(args[1])
 n_cores <- as.numeric(args[2]) - 1
 outdir <- args[3]
+#"data/outputs/test_subset_2000_parallel_v2"
 
 ##############################################################################
 # Functions
@@ -38,10 +39,9 @@ convert_wgs_to_utm <- function(lon, lat){
         return(epsg_code)
     }
 }
-    
+
 
 calculate_shadows <- function(
-                            template,
                             dem,
                             lon, 
                             lat, 
@@ -126,12 +126,10 @@ calculate_shadows <- function(
             }
         }
         # Function to write out
-        transform_and_write <- function(cache_mask, suf, template){
+        transform_and_write <- function(cache_mask, suf){
             shadows = t(apply(cache_mask, 2, rev))
             shadow_rast <- rast(vals=shadows, crs=crs(dem), extent=ext(dem), resolution=res(dem))
-            # reproject to wgs84
-            shadow_rast <- project(shadow_rast, template, method="bilinear")
-            shadow_rast <- mask(shadow_rast, template)
+            shadow_rast <- mask(shadow_rast, dem)
             # Replace NA values with 2.55 This will be converted to 255 when we multiply by 100 
             shadow_rast <- subst(shadow_rast, NA, 2.55)
             # Multiply by 100 to convert to integers from 0-255 so it can be saved as uint8
@@ -139,9 +137,9 @@ calculate_shadows <- function(
             out_fp <- paste0(outdir, "/", suf, "/", out_filename)
             writeRaster(shadow_rast, out_fp, overwrite=TRUE, datatype="INT1U", gdal=c("COMPRESS=DEFLATE"), NAflag=255)
         }
-        transform_and_write(cache_mask_rt, "raytrace", template)
-        transform_and_write(cache_mask_ls, "lambshade", template)
-        transform_and_write(cache_mask_sh, "combo", template)
+        transform_and_write(cache_mask_rt, "raytrace")
+        transform_and_write(cache_mask_ls, "lambshade")
+        transform_and_write(cache_mask_sh, "combo")
         return("Success")
 
     }, error=function(e) {
@@ -177,11 +175,13 @@ apply_calculate_shadows <- function(tif_filename, month, hour, size, outdir){
     out_fp_combo <- paste0(outdir, "/", "combo", "/", out_filename)
 
     if(file.exists(out_fp_raytrace) & file.exists(out_fp_lambshade) & file.exists(out_fp_combo)){
-        return("Already exists")
+        return()
     }
     
     # Load the raster
     dem <- rast(tif_filename)
+
+    # Create matching rasters of lattidue and longitude
     lon <- init(dem, 'x')
     lat <- init(dem, 'y')
 
@@ -191,17 +191,13 @@ apply_calculate_shadows <- function(tif_filename, month, hour, size, outdir){
         convert_wgs_to_utm(mean(values(lon)), mean(values(lat)))
         )
     dem_projected <- project(dem, utm_crs) 
-    res_meters <- res(dem_projected)[1]
-    # Create matching rasters of lattidue and longitude
-    lon_projected <- init(dem_projected, 'x')
-    lat_projected <- init(dem_projected, 'y')
+    res_meters <- res(dem_projected)[1]   
 
     # Calcualte the shadows
     shad <- calculate_shadows(
         dem,
-        dem_projected,
-        lon_projected, 
-        lat_projected, 
+        lon, 
+        lat, 
         outdir,
         out_filename,
         month, 
@@ -255,6 +251,7 @@ foreach(i=1:nrow(files)) %:%
         library(sf)
 
         file <- files$file[i]
+        print(file)
         apply_calculate_shadows(file, as.character(dts$month[j]), as.character(dts$hour[j]), size, outdir)
 
     }

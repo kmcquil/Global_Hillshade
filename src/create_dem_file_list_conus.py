@@ -1,6 +1,7 @@
 import itertools
 import pandas as pd
 import math
+import os
 
 # Range for conus
 #25N - 45N 
@@ -16,18 +17,28 @@ longs = ["w" + str(i).zfill(3) for i in longs]
 combinations = list(itertools.product(lats, longs))
 
 # Create the file paths
-fps = []
+all_fps = []
 for i in range(0, len(combinations)):
-    fps.append("data/raw/merit_retile/" + combinations[i][0] + combinations[i][1] + "_elv.tif")
+    all_fps.append("data/raw/merit_retile/" + combinations[i][0] + combinations[i][1] + "_elv.tif")
 
+# Check if they exist
+fps = [i for i in all_fps if os.path.exists(i)]
 fps = pd.DataFrame(fps)
 fps.columns = ["file"]
+print("Number of files: " + str(len(fps)))
 
-r = math.ceil(len(fps)/10)
+n = 30
+r = math.ceil(len(fps)/n)
 b = list(range(0, len(fps) ,r))
 b.append(len(fps))
 
-for i in range(0, 10):
+# Make the output directory if it doesn't already exist 
+outdir = "data/dem_tiles"
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
+
+for i in range(0, len(b)-1):
     sub = fps.iloc[b[i]:b[i+1]]
     j = i + 1
-    sub.to_csv("data/tiles_conus/tiles"+str(j) + ".csv", index=False)
+    print(j)
+    sub.to_csv(outdir+"/tiles"+str(j) + ".csv", index=False)

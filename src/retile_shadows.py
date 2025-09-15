@@ -16,9 +16,19 @@ import sys
 ##############################################################################
 # Set the inputs
 ##############################################################################
-shadow_files = pd.DataFrame(str(sys.argv[1]))
+shadow_files = pd.read_csv(str(sys.argv[1]))
 shadow_files = shadow_files["file"].to_list()
 outdir = "data/outputs/shadows_retile"
+
+# Make the output directory if it doesn't already exist 
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
+if not os.path.exists(outdir + "/combo"):
+    os.makedirs(outdir + "/combo")
+if not os.path.exists(outdir + "/raytrace"):
+    os.makedirs(outdir + "/raytrace")
+if not os.path.exists(outdir + "/lambshade"):
+    os.makedirs(outdir + "/lambshade")
 
 ##############################################################################
 # Retile 
@@ -120,20 +130,25 @@ def mosaic_and_retile(file, outdir):
 
     # Mosaic the files together, using the bounds of the original tile 
     src_files_to_mosaic = [rasterio.open(s) for s in adj_files]
-    mosaic, out_trans = merge(src_files_to_mosaic, bounds=bbox, method="max", nodata=float('nan')) 
+    #mosaic, out_trans = merge(src_files_to_mosaic, bounds=bbox, method="max", nodata=float('nan')) 
+    mosaic, out_trans = merge(src_files_to_mosaic, bounds=bbox, method="max", nodata=255) 
     
     # Update the metadata with new dimensions, transform, and CRS
+    mosaic = mosaic.astype("uint8")
     out_meta = src_files_to_mosaic[0].meta.copy()
     out_meta.update({
         "driver": "GTiff",
         "height": mosaic.shape[1],
         "width": mosaic.shape[2],
         "transform": out_trans,
-        "crs": src_files_to_mosaic[0].crs
+        "crs": src_files_to_mosaic[0].crs,
+        "nodata": 255, 
+        "dtype": "uint8"
     })
 
     # Write the mosaic raster to a new file
-    output_path = outdir + "/" + os.path.basename(file)
+    folder_name = os.path.basename(os.path.dirname(file))
+    output_path = outdir + "/" + folder_name + "/" + os.path.basename(file)
     with rasterio.open(output_path, "w", **out_meta) as dest:
         dest.write(mosaic)
 

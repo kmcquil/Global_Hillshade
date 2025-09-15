@@ -18,4 +18,4 @@ apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
     --cleanenv \
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif python3 src/create_dem_file_list.py
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif python3 src/create_dem_file_list_conus.py

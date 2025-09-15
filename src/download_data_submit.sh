@@ -13,7 +13,7 @@
 ####### end of job customization
 # end of environment & variable setup
 
-module load containers/apptainer
+module load apptainer/1.4.0
 apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \

@@ -7,14 +7,14 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=20GB
-#SBATCH --time 3:00:00
+#SBATCH --time 5:00:00
 #SBATCH -p normal_q
 #SBATCH -A swot
 #SBATCH --array=1-30
 ####### end of job customization
 # end of environment & variable setup
 
-module load containers/apptainer
+module load apptainer/1.4.0
 apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \

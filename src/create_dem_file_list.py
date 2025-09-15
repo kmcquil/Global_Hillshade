@@ -4,7 +4,7 @@ import glob
 import os
 
 # List all of the retiled DEM tifs and make into a pd df
-fps = glob.glob("data/raw/merit_retile/*.tif")
+fps = glob.glob("data/raw/merit_retile/**/*.tif")
 fps = pd.DataFrame(fps)
 fps.columns = ["file"]
 
@@ -19,7 +19,7 @@ outdir = "data/dem_tiles"
 if not os.path.exists(outdir):
     os.makedirs(outdir)
 
-for i in range(0, n):
+for i in range(0, len(b)-1):
     sub = fps.iloc[b[i]:b[i+1]]
     j = i + 1
     sub.to_csv(outdir+"/tiles"+str(j) + ".csv", index=False)

@@ -1,17 +1,17 @@
-# Notes from getting this thing to build
+# Docker to SIF for HPC
 
-- The rayshade_r_py.sif was built from a Dockerfile using the original Rayshade package (devtools::install_github("tylermorganwall/rayshader")).
 - The rayshade_km.sif was built from the Dockerfile in this folder and uses my updated version of the Rayshade package.
 
 ### Create a dockerfile 
 - An Ubuntu R image is used as the base for the image. 
 - Necessary R libraries are installed from requirements.R.
+- Necessary python modules are installed from requirements.txt
 
 ### Steps to create the docker image
-- Create the Dockerfile using an Ubuntu R image and install the necessary R libraries from requirements.R
-- Build the docker image using the command
+- Create the Dockerfile
+- Build the docker image using the command. May need to force it to ignore the cache if rebuilding.
 ```
-    docker build -t rayshade .
+    docker build -t rayshade_km .
 ```
 - Push the image to the docker hub. I used VS code. The address is docker://kmcquil/rayshade:latest
 
@@ -28,18 +28,18 @@ docker run --mount type=bind,source=C:/Users/kmcquil/Documents/Global_Hillshade,
 - Login to VT cluster and cd to folder where you want to build the .sif file
 - Load the necessary modules and build from the docker file. Use the following commands
 ```
-module load containers/apptainer
-apptainer build rayshade.sif docker://kmcquil/rayshade:latest
+module load apptainer/1.4.0
+apptainer build rayshade_km.sif docker://kmcquil/rayshade_km:latest
 ```
-- I ran into a weird error ("FATAL:container creation failed: failed to resolve session directory /localscratch/apptainer/mnt/session: lstat /localscratch/apptainer: no such file or directory".). The way to solve this is just by making the directory. Obvious in hindsight. 
+- I ran into a weird error ("FATAL:container creation failed: failed to resolve session directory /localscratch/apptainer/mnt/session: lstat /localscratch/apptainer: no such file or directory".). The way to solve this is just by making the directory. Obvious in hindsight.
 
 Example command to run a .sif file 
 ```
 apptainer exec \
     --pwd /projects/swot/kmcquil/Global_Hillshade \
     --bind /projects/swot/kmcquil/Global_Hillshade \
-    --cleanenv \"FATAL:   container creation failed: failed to resolve session directory /localscratch/apptainer/mnt/session: lstat /localscratch/apptainer: no such file or directory".
-    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade.sif Rscript src/docker_test.R
+    --cleanenv \
+    /projects/swot/kmcquil/Global_Hillshade/docker/rayshade_km.sif Rscript src/map_shadows.R "data/dem_tiles/tiles_1.csv" 6 "data/outputs/shadows_v2"
 ```
 - pwd sets the working directory if it is different from the directory where you launch the script 
 - bind binds the outside directory with the inside directory. The format is [/source:/dest] but to bind to to the root then you can leave it blank 
