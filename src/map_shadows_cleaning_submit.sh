@@ -10,7 +10,7 @@
 #SBATCH --time 100:00:00
 #SBATCH -p normal_q
 #SBATCH -A swot
-#SBATCH --array=1-27
+#SBATCH --array=1-30
 ####### end of job customization
 # end of environment & variable setup
 
