@@ -38,8 +38,7 @@ convert_wgs_to_utm <- function(lon, lat){
         return(epsg_code)
     }
 }
-    
-
+ 
 calculate_shadows <- function(
                             template,
                             dem,
@@ -96,6 +95,12 @@ calculate_shadows <- function(
                 # Calculate solar position at that location
                 lon_p <- mean(lon_mat[i:i_end,j:j_end], na.rm=TRUE)
                 lat_p <- mean(lat_mat[i:i_end,j:j_end], na.rm=TRUE)
+                coord_p <- data.frame(x = c(lon_p), y = c(lat_p), stringsAsFactors = FALSE)
+                coord_p <- st_as_sf(coord_p, coords = c("x", "y"), crs = crs(dem))
+                coord_p <- st_transform(coord_p, crs = 4326)
+                coord_p <- st_coordinates(coord_p)
+                lon_p <- as.numeric(coord_p[,1])
+                lat_p <- as.numeric(coord_p[,2])
                 solar_pos <- solarpos(matrix(c(lon_p, lat_p), nrow = 1),
                         as.POSIXct(paste0("2023-", month, "-01 ", hour, ":00:00"), tz = "EST"),
                         elev = elevation)
